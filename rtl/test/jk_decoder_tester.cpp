@@ -102,3 +102,11 @@ TEST_F(JKDecoderTest, SetupIn) {
                  "../rtl/test/bus_captures/setupin_capture_jk.csv");
 }
 
+TEST_F(JKDecoderTest, AckPoorTiming) {
+    reset();
+
+    capture_test(*this,
+                 "../rtl/test/bus_captures/ack_poor_capture.csv",
+                 "../rtl/test/bus_captures/ack_poor_capture_jk.csv");
+}
+

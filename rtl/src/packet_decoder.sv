@@ -7,21 +7,22 @@ module packet_decoder (
     input dp, dn,
     output bus_reset,
     output bus_sop,
-    output bit_out,
-    output packet_bit_valid,
     output [7:0]byte_out,
     output byte_out_valid,
-    output [3:0]packet_kind,
-    output packet_kind_valid,
-    output packet_valid,
+    output [3:0]packet_pid_out,
+    output packet_pid_valid,
+    output [6:0]packet_addr,
+    output [3:0]packet_endp,
+    output [10:0]packet_frame,
+    output packet_good,
     output packet_eop
 );
 
-wire bus_bit_out;
-wire bus_bit_valid;
-wire bus_bit_reset;
-wire bus_bit_sop;
-wire bus_bit_eop;
+logic bus_bit_out;
+logic bus_bit_valid;
+logic bus_bit_reset;
+logic bus_bit_sop;
+logic bus_bit_eop;
 
 assign bus_sop = bus_bit_sop;
 assign bus_reset = bus_bit_reset;
@@ -36,172 +37,224 @@ jk_decoder jk0(.reset(reset),
               .bus_sop(bus_bit_sop),
               .bus_eop(bus_bit_eop));
 
-assign bit_out = bus_bit_out;
+logic [4:0]crc5;
+logic [15:0]crc16;
 
-wire [4:0]crc5;
-wire [15:0]crc16;
-
-reg crc_reset;
+logic crc_reset;
+assign crc_reset = packet_state == WAIT ||
+                   packet_state == PID;
 
 USBCRC5 crc5calc(.data_in(bus_bit_out),
-                 .crc_en(packet_bit_valid),
+                 .crc_en(bus_bit_valid),
                  .crc_out(crc5),
                  .rst(crc_reset),
                  .clk(clk48));
 
 USBCRC16 crc16calc(.data_in(bus_bit_out),
-                   .crc_en(packet_bit_valid),
+                   .crc_en(bus_bit_valid),
                    .crc_out(crc16),
                    .rst(crc_reset),
                    .clk(clk48));
 
-localparam WAIT = 3'd0;
-localparam PID = 3'd1;
-localparam PAYLOAD = 3'd2;
-localparam EOP = 3'd3;
-localparam FINAL = 3'd4;
+typedef enum {WAIT, PID, PAYLOAD, EOP, COMPLETE} PacketState;
 
-localparam PID_OUT = 4'b0001;
-localparam PID_IN = 4'b1001;
-localparam PID_SOF = 4'b0101;
-localparam PID_SETUP = 4'b1101;
+PacketState packet_state;
 
-localparam PID_DATA0 = 4'b0011;
-localparam PID_DATA1 = 4'b1011;
-localparam PID_DATA2 = 4'b0111;
-localparam PID_MDATA = 4'b1111;
+typedef enum logic [3:0] {
+    PID_OUT   = 'h1,
+    PID_IN    = 'h9,
+    PID_SOF   = 'h5,
+    PID_SETUP = 'hd,
 
-localparam PID_ACK =   4'b0010;
-localparam PID_NAK =   4'b1010;
-localparam PID_STALL = 4'b1110;
-localparam PID_NYET =  4'b0110;
+    PID_DATA0 = 'h3,
+    PID_DATA1 = 'hb,
+    PID_DATA2 = 'h7,
+    PID_MDATA = 'hf,
 
-localparam PID_ERR =   4'b1100;
-localparam PID_SPLIT = 4'b1000;
-localparam PID_PING =  4'b0100;
+    PID_ACK   = 'h2,
+    PID_NCK   = 'ha,
+    PID_STALL = 'he,
+    PID_NYET  = 'h6,
 
-reg [2:0]packet_state;
-reg [7:0]packet_pid;
-reg [2:0]packet_pid_counter;
+    PID_ERR   = 'hc,
+    PID_SPLIT = 'h8,
+    PID_PING  = 'h4,
 
-reg crc_valid;
+    PID_INVALID = 'h0
+} Pid;
 
-reg [7:0]byte_buffer;
-reg byte_valid;
-reg [3:0]byte_bit_counter;
+
+logic [7:0]pid_buffer;
+int pid_counter;
+
+Pid packet_pid;
+assign packet_pid = Pid'(pid_buffer[3:0]);
+
+logic pid_valid;
+assign pid_valid = pid_buffer[3:0] == ~pid_buffer[7:4] &&
+                   packet_pid != PID_INVALID;
+
+// Increment the pid counter for each byte while digesting the PID
+always_ff @(posedge clk48) begin
+    if (reset)
+        pid_counter <= 0;
+    else
+        if (packet_state != PID)
+            pid_counter <= 0;
+        else
+            if (bus_bit_valid)
+                pid_counter <= pid_counter + 1;
+            else
+                pid_counter <= pid_counter;
+end
+
+assign packet_pid_out = packet_pid;
+assign packet_pid_valid = pid_valid &&
+                          (packet_state == PAYLOAD ||
+                           packet_state == EOP ||
+                           packet_state == COMPLETE);
+
+// Pull PID bits intop pid_buffer
+always_ff @(posedge clk48) begin
+    if (reset)
+        pid_buffer <= 0;
+    else
+        if (packet_state == WAIT)
+            pid_buffer <= 0;
+        else if (packet_state == PID &&
+            bus_bit_valid)
+            pid_buffer <= {bus_bit_out, pid_buffer[7:1]};
+        else
+            pid_buffer <= pid_buffer;
+end
+
+logic [10:0]token_buffer;
+int token_counter;
+
+assign packet_addr = token_buffer[10:4];
+assign packet_endp = token_buffer[3:0];
+assign packet_frame = token_buffer;
+
+
+// Increment the token counter for the first 12 bytes of payload
+always_ff @(posedge clk48) begin
+    if (reset)
+        token_counter <= 0;
+    else
+        if (packet_state != PAYLOAD)
+            token_counter <= 0;
+        else
+            if (bus_bit_valid && token_counter != 11)
+                token_counter <= token_counter + 1;
+            else
+                token_counter <= token_counter;
+end
+
+// Pull the first 12 bits into token buffer
+always_ff @(posedge clk48) begin
+    if (reset)
+        token_buffer <= 0;
+    else
+        if (packet_state == WAIT)
+            token_buffer <= 0;
+        else if (packet_state == PAYLOAD &&
+                 bus_bit_valid &&
+                 token_counter != 11)
+            token_buffer <= {bus_bit_out, token_buffer[10:1]};
+        else
+            token_buffer <= token_buffer;
+end
+
+logic [7:0]byte_buffer;
+int byte_counter;
+logic byte_valid;
 
 assign byte_out = byte_buffer;
-assign packet_kind = packet_pid[3:0];
-assign packet_kind_valid = packet_pid[3:0] == ~packet_pid[7:4] &&
-                           packet_state == PAYLOAD;
-                            
-assign packet_bit_valid = bus_bit_valid &&
-                          packet_state == PAYLOAD &&
-                          packet_pid[3:0] == ~packet_pid[7:4];
 assign byte_out_valid = byte_valid;
 
-assign packet_valid = packet_state == FINAL &&
-                      packet_pid[3:0] == ~packet_pid[7:4] &&
-                      crc_valid;
+// Count bits into full bytes and strobe the byte_valid
+// output on rollover from 7 to 0
+always_ff @(posedge clk48) begin
+    byte_valid <= 0;
 
-assign packet_eop = packet_state == FINAL;
+    if (reset)
+        byte_counter <= 0;
+    else
+        if (packet_state != PAYLOAD)
+            byte_counter <= 0;
+        else
+            if (bus_bit_valid)
+                if (byte_counter == 7) begin
+                    byte_counter <= 0;
+                    byte_valid <= 1;
+                end else
+                    byte_counter <= byte_counter + 1;
+            else
+                byte_counter <= byte_counter;
+end
+
+always_ff @(posedge clk48) begin
+    if (reset)
+        byte_buffer <= 0;
+    else
+        if (packet_state == WAIT)
+            byte_buffer <= 0;
+        else if (packet_state == PAYLOAD &&
+                 bus_bit_valid)
+            byte_buffer <= {bus_bit_out, byte_buffer[7:1]};
+        else
+            byte_buffer <= byte_buffer;
+end
+
+
+localparam CRC5_RESIDUAL = 'hC;
+localparam CRC16_RESIDUAL = 'h800D;
+
+logic crc_valid;
 
 always @(*) begin
     crc_valid = 'd1;
 
-    case (packet_kind)
+    case (packet_pid)
         PID_SETUP,
         PID_IN,
         PID_OUT,
         PID_SOF: begin
-        crc_valid = crc5 == 'hC;
+        crc_valid = crc5 == CRC5_RESIDUAL;
         end
 
         PID_DATA0,
         PID_DATA1: begin
-        crc_valid = crc16 == 'h800D;
+        crc_valid = crc16 == CRC16_RESIDUAL;
         end
         default:
         crc_valid = 0;
     endcase
 end
 
-always @(posedge clk48) begin
-    if (reset) begin
+assign packet_eop = packet_state == COMPLETE;
+assign packet_good = packet_eop &&
+                     pid_valid &&
+                     crc_valid;
+
+always_ff @(posedge clk48) begin
+    if (reset)
         packet_state <= WAIT;
-        packet_pid <= 'd0;
-        packet_pid_counter <= 'd0;
-        crc_reset <= 'b1;
-        byte_buffer <= 'd0;
-        byte_valid <= 'd0;
-        byte_bit_counter <= 'd0;
-    end else begin
+    else
         packet_state <= packet_state;
-        packet_pid <= packet_pid;
-        packet_pid_counter <= packet_pid_counter;
-        crc_reset <= 'b0;
-
-        byte_buffer <= byte_buffer;
-        byte_valid <= 'd0;
-        byte_bit_counter <= 'd0;
-
         case (packet_state)
-         WAIT: begin
-            if (bus_bit_sop) begin
-                packet_state <= PID;
-            end
-
-         end
-
-         PID: begin
-            if (bus_bit_valid) begin
-                packet_pid <= bus_bit_out << 7 | packet_pid >> 1;
-
-                packet_pid_counter <= packet_pid_counter + 'd1;
-
-                if (packet_pid_counter == 'd7) begin
-                    crc_reset <= 'b1;
+            WAIT:
+                if (bus_bit_sop)
+                    packet_state <= PID;
+            PID:
+                if (pid_counter == 8)
                     packet_state <= PAYLOAD;
-                end
-            end
-
-            if (bus_bit_eop) begin
-                packet_state <= FINAL;
-            end
-         end
-
-         PAYLOAD: begin
-
-            byte_bit_counter <= byte_bit_counter;
-
-            if (bus_bit_valid) begin
-                byte_buffer <= {bus_bit_out, byte_buffer[7:1]};
-
-                if (byte_bit_counter == 'd7) begin
-                    byte_valid <= 'b1;
-                    byte_bit_counter <= 'd0;
-                end else begin
-                    byte_bit_counter <= byte_bit_counter + 'd1;
-                end
-            end
-
-            if (bus_bit_eop) begin
-                packet_state <= EOP;
-            end
-         end
-
-         EOP: begin
-            if (!bus_bit_eop) begin
-                packet_state <= FINAL;
-            end
-         end
-
-         FINAL: packet_state <= WAIT;
-         default: packet_state <= WAIT;
-
+            PAYLOAD:
+                if (bus_bit_eop)
+                    packet_state <= COMPLETE;
+            COMPLETE:
+                packet_state <= WAIT;
         endcase
-    end
-
 end
 
 endmodule

@@ -19,7 +19,7 @@ localparam SAMPLE_CLK_PERIOD_FS = 4;
 int sample_counter, sample_counter_next;
 assign sample_counter_next = (decoder_state == IDLE ||
                               decoder_state == EOP) ? 0 :
-                             decoder_state == SOP ? 1 :
+                             decoder_state == SOP ? 2 :
                              sample_counter < (SAMPLE_CLK_PERIOD_FS - 1) ? sample_counter + 1 :
                                                                         0;
 typedef enum {SAMPLE_IDLE, SAMPLE_TAKE, SAMPLE_PROCESS, SAMPLE_PRESENT} SampleState;
@@ -37,6 +37,7 @@ always_ff @(posedge clk48) begin
         sample_counter <= sample_counter_next;
 end
 
+// TODO: Sample three times during the waveform and vote on the bit
 logic should_sample;
 always_comb begin
     if (reset)
