@@ -20,16 +20,21 @@ class ModTest : public ::testing::Test {
         timeui = 0;
         clk_cnt = 0;
 
-        vctx->traceEverOn(true);
-        mod->trace(vcd.get(), 99);
-        auto ut = ::testing::UnitTest::GetInstance();
-        auto test = ut->current_test_info();
-        std::stringstream trace_name;
-        trace_name << "test_" <<
-                      test->test_suite_name() << "_" <<
-                      test->name() << ".vcd";
-            
-        vcd->open(trace_name.str().c_str());
+        if (const char* env_dump_vcd = std::getenv("DUMP_VCD")) {
+            int en_vcd = std::atoi(env_dump_vcd);
+            if (en_vcd > 0) {
+                vctx->traceEverOn(true);
+                mod->trace(vcd.get(), 99);
+                auto ut = ::testing::UnitTest::GetInstance();
+                auto test = ut->current_test_info();
+                std::stringstream trace_name;
+                trace_name << "test_" <<
+                              test->test_suite_name() << "_" <<
+                              test->name() << ".vcd";
+
+                vcd->open(trace_name.str().c_str());
+            }
+        }
     }
 
     virtual void TearDown() override {

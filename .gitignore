@@ -1,0 +1,8 @@
+
+build/
+.cache/
+.nvim/
+vaporview/
+
+*.vcd
+compile_commands.json

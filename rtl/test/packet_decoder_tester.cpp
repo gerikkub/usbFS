@@ -39,7 +39,7 @@ TEST_F(PacketDecoderTest, Reset) {
 TEST_F(PacketDecoderTest, SOF) {
     reset();
 
-    std::vector<USBCaptureInput> capture_entries = load_usb_capture("../rtl/test/bus_captures/sof_capture.csv");
+    std::vector<USBCaptureInput> capture_entries = load_usb_capture("bus_captures/sof_capture.csv");
     ASSERT_GT(capture_entries.size(), 0);
     this->mod->dn = 0;
     this->mod->dp = 0;
@@ -65,7 +65,7 @@ TEST_F(PacketDecoderTest, SOF) {
 TEST_F(PacketDecoderTest, SetupTransaction) {
     reset();
 
-    std::vector<USBCaptureInput> capture_entries = load_usb_capture("../rtl/test/bus_captures/setup_txn_capture.csv");
+    std::vector<USBCaptureInput> capture_entries = load_usb_capture("bus_captures/setup_txn_capture.csv");
     ASSERT_GT(capture_entries.size(), 0);
     this->mod->dn = 0;
     this->mod->dp = 0;

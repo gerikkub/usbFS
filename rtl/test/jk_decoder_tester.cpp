@@ -82,31 +82,31 @@ TEST_F(JKDecoderTest, SOF) {
     reset();
 
     capture_test(*this,
-                 "../rtl/test/bus_captures/sof_capture.csv",
-                 "../rtl/test/bus_captures/sof_capture_jk.csv");
+                 "bus_captures/sof_capture.csv",
+                 "bus_captures/sof_capture_jk.csv");
 }
 
 TEST_F(JKDecoderTest, Bitstuff) {
     reset();
 
     capture_test(*this,
-                 "../rtl/test/bus_captures/bitstuff_capture.csv",
-                 "../rtl/test/bus_captures/bitstuff_capture_jk.csv");
+                 "bus_captures/bitstuff_capture.csv",
+                 "bus_captures/bitstuff_capture_jk.csv");
 }
 
 TEST_F(JKDecoderTest, SetupIn) {
     reset();
 
     capture_test(*this,
-                 "../rtl/test/bus_captures/setupin_capture.csv",
-                 "../rtl/test/bus_captures/setupin_capture_jk.csv");
+                 "bus_captures/setupin_capture.csv",
+                 "bus_captures/setupin_capture_jk.csv");
 }
 
 TEST_F(JKDecoderTest, AckPoorTiming) {
     reset();
 
     capture_test(*this,
-                 "../rtl/test/bus_captures/ack_poor_capture.csv",
-                 "../rtl/test/bus_captures/ack_poor_capture_jk.csv");
+                 "bus_captures/ack_poor_capture.csv",
+                 "bus_captures/ack_poor_capture_jk.csv");
 }
 

@@ -192,49 +192,6 @@ TEST_F(JKEncoderTest, Reset) {
 }
 
 
-/*
-TEST_F(JKEncoderTest, Dummy) {
-    reset();
-
-    mod->start_txn = 1;
-    clk();
-    mod->start_txn = 0;
-
-    std::vector<uint8_t> byte_vals = {0x80, 0xA5, 0xB9, 0x40};
-
-    int byte_idx = 0;
-    int bit_idx = 0;
-
-    int max_cycles = 1000;
-
-    while (byte_idx < byte_vals.size()) {
-        while (bit_idx < 8) {
-            mod->bit_in = (byte_vals[byte_idx] >> (bit_idx)) & 1;
-            if ((byte_idx == byte_vals.size() - 1) &&
-                bit_idx == 7) {
-                mod->last_bit = 1;
-            } else {
-                mod->last_bit = 0;
-            }
-
-            clk();
-            if (max_cycles-- == 0) {
-                return;
-            }
-            if (mod->bit_ack) {
-                bit_idx++;
-            }
-        }
-        byte_idx++;
-        bit_idx = 0;
-    }
-
-    while (!mod->done && max_cycles--) {
-        clk();
-    }
-}
-*/
-
 void loopback_test(JKEncoderTest& tester, std::vector<uint8_t> byte_vals, int max_cycles) {
 
     JKDecoder decoder;
