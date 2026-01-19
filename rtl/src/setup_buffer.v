@@ -1,6 +1,6 @@
 
 
-module SetupBuffer(
+module setup_buffer(
     input reset, clk,
     input en,
     input [7:0]byte_in,
@@ -25,9 +25,9 @@ assign bmRequestTypeRecipient = buffer[0][4:0];
 
 assign bRequest = buffer[1];
 
-assign wValue = buffer[3] << 8 | buffer[2];
-assign wIndex = buffer[5] << 8 | buffer[4];
-assign wLength = buffer[7] << 8 | buffer[6];
+assign wValue = {buffer[3] << 8, buffer[2]};
+assign wIndex = {buffer[5] << 8, buffer[4]};
+assign wLength = {buffer[7] << 8, buffer[6]};
 
 always @(posedge clk) begin
 
@@ -51,5 +51,5 @@ always @(posedge clk) begin
     end
 end
 
-
 endmodule
+

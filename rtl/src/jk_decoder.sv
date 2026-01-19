@@ -23,7 +23,7 @@ assign sample_counter_next = (decoder_state == IDLE ||
                              sample_counter < (SAMPLE_CLK_PERIOD_FS - 1) ? sample_counter + 1 :
                                                                            0;
 
-typedef enum {SAMPLE_IDLE, SAMPLE_TAKE, SAMPLE_PROCESS, SAMPLE_PRESENT} SampleState;
+typedef enum logic [1:0] {SAMPLE_IDLE, SAMPLE_TAKE, SAMPLE_PROCESS, SAMPLE_PRESENT} SampleState;
 
 SampleState sample_state;
 assign sample_state = sample_counter == 0 ? SAMPLE_TAKE :
@@ -49,11 +49,11 @@ always_comb begin
             SOP: should_sample = 1;
             SYNC: should_sample = sample_state == SAMPLE_TAKE;
             PAYLOAD: should_sample = sample_state == SAMPLE_TAKE;
-            EOP: should_sample = 0;
+            EOP: should_sample = 1;
         endcase
 end
 
-typedef enum {BUS_J, BUS_K, BUS_IDLE, BUS_INVALID} BusState;
+typedef enum logic[1:0] {BUS_J, BUS_K, BUS_IDLE, BUS_INVALID} BusState;
 
 BusState bus_state_in;
 assign bus_state_in = dp == 'b0 && dn == 'b0 ? BUS_IDLE :
@@ -113,7 +113,10 @@ always_comb begin
         end
 
         EOP: begin
+            if (sampled_bus_state == BUS_J)
                 decoder_state_next = IDLE;
+            else
+                decoder_state_next = EOP;
         end
     endcase
 end
@@ -132,6 +135,7 @@ assign sampled_nrzi = (sampled_bus_state == last_sampled_bus_state) &&
 localparam BIT_STUFFING_COUNT = 6;
 logic [2:0] bit_stuffing_counter_next;
 assign bit_stuffing_counter_next = bit_stuffing_counter == BIT_STUFFING_COUNT ? bit_stuffing_counter + 1 :
+                                   bit_stuffing_counter == (BIT_STUFFING_COUNT + 1) && sampled_nrzi == 1 ? 1 :
                                    sampled_nrzi == 1 ? bit_stuffing_counter + 1 :
                                                        0;
 logic [2:0] bit_stuffing_counter;
@@ -141,7 +145,8 @@ assign bit_stuffing = bit_stuffing_counter == (BIT_STUFFING_COUNT + 1);
 always_ff @(posedge clk48) begin
     if (reset)
         bit_stuffing_counter <= 0;
-    else if (decoder_state == PAYLOAD)
+    else if (decoder_state == PAYLOAD ||
+             decoder_state == SYNC)
         if (sample_state == SAMPLE_PROCESS)
             bit_stuffing_counter <= bit_stuffing_counter_next;
         else
@@ -171,7 +176,7 @@ end
 
 assign bus_reset = idle_counter == BUS_IDLE_CLKS;
 assign bus_sop = decoder_state == SOP ? 'd1 : 'd0;
-assign bus_eop = decoder_state == EOP ? 'd1 : 'd0;
+assign bus_eop = decoder_state == EOP && decoder_state_next == IDLE;
 
 assign bit_out = sampled_nrzi;
 assign bit_valid = decoder_state == PAYLOAD &&

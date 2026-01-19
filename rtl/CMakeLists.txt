@@ -116,7 +116,20 @@ add_verilator_library(
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/packet_decoder.sv"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/jk_decoder.sv"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/crc.v"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/types.sv"
 )
+
+add_verilator_library(
+    TOP transaction_sm
+    TOP_DIR src
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/transaction_sm.sv"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/packet_decoder.sv"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/jk_decoder.sv"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/ep0_handler.sv"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_buffer.v"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/crc.v"
+)
+
 
 add_subdirectory(test)
 

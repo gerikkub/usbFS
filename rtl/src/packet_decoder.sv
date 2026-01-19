@@ -1,4 +1,5 @@
 
+`include "types.sv"
 `include "jk_decoder.sv"
 `include "crc.v"
 
@@ -28,14 +29,14 @@ assign bus_sop = bus_bit_sop;
 assign bus_reset = bus_bit_reset;
 
 jk_decoder jk0(.reset(reset),
-              .clk48(clk48),
-              .dp(dp),
-              .dn(dn),
-              .bit_out(bus_bit_out),
-              .bit_valid(bus_bit_valid),
-              .bus_reset(bus_bit_reset),
-              .bus_sop(bus_bit_sop),
-              .bus_eop(bus_bit_eop));
+               .clk48(clk48),
+               .dp(dp),
+               .dn(dn),
+               .bit_out(bus_bit_out),
+               .bit_valid(bus_bit_valid),
+               .bus_reset(bus_bit_reset),
+               .bus_sop(bus_bit_sop),
+               .bus_eop(bus_bit_eop));
 
 logic [4:0]crc5;
 logic [15:0]crc16;
@@ -59,29 +60,6 @@ USBCRC16 crc16calc(.data_in(bus_bit_out),
 typedef enum {WAIT, PID, PAYLOAD, EOP, COMPLETE} PacketState;
 
 PacketState packet_state;
-
-typedef enum logic [3:0] {
-    PID_OUT   = 'h1,
-    PID_IN    = 'h9,
-    PID_SOF   = 'h5,
-    PID_SETUP = 'hd,
-
-    PID_DATA0 = 'h3,
-    PID_DATA1 = 'hb,
-    PID_DATA2 = 'h7,
-    PID_MDATA = 'hf,
-
-    PID_ACK   = 'h2,
-    PID_NCK   = 'ha,
-    PID_STALL = 'he,
-    PID_NYET  = 'h6,
-
-    PID_ERR   = 'hc,
-    PID_SPLIT = 'h8,
-    PID_PING  = 'h4,
-
-    PID_INVALID = 'h0
-} Pid;
 
 
 logic [7:0]pid_buffer;
@@ -131,8 +109,8 @@ end
 logic [10:0]token_buffer;
 logic [4:0]token_counter;
 
-assign packet_addr = token_buffer[10:4];
-assign packet_endp = token_buffer[3:0];
+assign packet_addr = token_buffer[6:0];
+assign packet_endp = token_buffer[10:7];
 assign packet_frame = token_buffer;
 
 
@@ -226,6 +204,13 @@ always @(*) begin
         PID_DATA0,
         PID_DATA1: begin
         crc_valid = crc16 == CRC16_RESIDUAL;
+        end
+
+        PID_ACK,
+        PID_NAK,
+        PID_STALL: begin
+
+        crc_valid = 1;
         end
         default:
         crc_valid = 0;
