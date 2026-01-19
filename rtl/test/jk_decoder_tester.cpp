@@ -2,11 +2,10 @@
 #include "mod_test.hpp"
 #include "Vjk_decoder.h"
 
-#include <fstream>
 
-typedef UsbModTest<Vjk_decoder> JKTest;
+typedef UsbModTest<Vjk_decoder> JKDecoderTest;
 
-TEST_F(JKTest, Reset) {
+TEST_F(JKDecoderTest, Reset) {
     reset();
 
     ASSERT_EQ(mod->bit_valid, 0);
@@ -15,7 +14,7 @@ TEST_F(JKTest, Reset) {
     ASSERT_EQ(mod->bus_eop, 0);
 }
 
-TEST_F(JKTest, BusIdle) {
+TEST_F(JKDecoderTest, BusIdle) {
     reset();
 
     mod->dn = 0;
@@ -36,7 +35,7 @@ TEST_F(JKTest, BusIdle) {
     ASSERT_EQ(mod->bus_eop, 0);
 }
 
-void capture_test(JKTest& tester, std::string capture_fname, std::string decoder_fname) {
+void capture_test(JKDecoderTest& tester, std::string capture_fname, std::string decoder_fname) {
 
     std::vector<USBCaptureInput> capture_entries = load_usb_capture(capture_fname);
     auto exp_pkts = load_usb_decoder_output(decoder_fname);
@@ -79,7 +78,7 @@ void capture_test(JKTest& tester, std::string capture_fname, std::string decoder
     ASSERT_EQ(pkt_itr, exp_pkts.end());
 }
 
-TEST_F(JKTest, SOF) {
+TEST_F(JKDecoderTest, SOF) {
     reset();
 
     capture_test(*this,
@@ -87,7 +86,7 @@ TEST_F(JKTest, SOF) {
                  "../rtl/test/bus_captures/sof_capture_jk.csv");
 }
 
-TEST_F(JKTest, Bitstuff) {
+TEST_F(JKDecoderTest, Bitstuff) {
     reset();
 
     capture_test(*this,
@@ -95,7 +94,7 @@ TEST_F(JKTest, Bitstuff) {
                  "../rtl/test/bus_captures/bitstuff_capture_jk.csv");
 }
 
-TEST_F(JKTest, SetupIn) {
+TEST_F(JKDecoderTest, SetupIn) {
     reset();
 
     capture_test(*this,

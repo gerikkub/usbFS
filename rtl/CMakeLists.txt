@@ -103,6 +103,19 @@ add_verilator_library(
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/jk_decoder.sv"
 )
 
+add_verilator_library(
+    TOP jk_encoder
+    TOP_DIR src
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/jk_encoder.sv"
+)
+
+
+add_verilator_library(
+    TOP packet_decoder
+    TOP_DIR src
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/packet_decoder.sv"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/jk_decoder.sv"
+)
 
 add_subdirectory(test)
 
