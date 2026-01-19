@@ -85,7 +85,7 @@ typedef enum logic [3:0] {
 
 
 logic [7:0]pid_buffer;
-int pid_counter;
+logic [3:0]pid_counter;
 
 Pid packet_pid;
 assign packet_pid = Pid'(pid_buffer[3:0]);
@@ -129,7 +129,7 @@ always_ff @(posedge clk48) begin
 end
 
 logic [10:0]token_buffer;
-int token_counter;
+logic [4:0]token_counter;
 
 assign packet_addr = token_buffer[10:4];
 assign packet_endp = token_buffer[3:0];
@@ -166,7 +166,7 @@ always_ff @(posedge clk48) begin
 end
 
 logic [7:0]byte_buffer;
-int byte_counter;
+logic [2:0]byte_counter;
 logic byte_valid;
 
 assign byte_out = byte_buffer;

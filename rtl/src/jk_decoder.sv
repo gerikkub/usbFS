@@ -16,12 +16,13 @@ DecoderState decoder_state;
 
 localparam SAMPLE_CLK_PERIOD_FS = 4;
 
-int sample_counter, sample_counter_next;
+logic [2:0]sample_counter, sample_counter_next;
 assign sample_counter_next = (decoder_state == IDLE ||
                               decoder_state == EOP) ? 0 :
                              decoder_state == SOP ? 2 :
                              sample_counter < (SAMPLE_CLK_PERIOD_FS - 1) ? sample_counter + 1 :
-                                                                        0;
+                                                                           0;
+
 typedef enum {SAMPLE_IDLE, SAMPLE_TAKE, SAMPLE_PROCESS, SAMPLE_PRESENT} SampleState;
 
 SampleState sample_state;
@@ -154,12 +155,11 @@ end
 localparam BUS_IDLE_CLKS = 360000;
 
 // Hold the number of cycle in the IDLE decoder state
-int idle_counter;
-int  idle_counter_next;
+logic [18:0] idle_counter, idle_counter_next;
 assign idle_counter_next = reset == 1 ? 0 :
                            bus_state_in != BUS_IDLE ? 0 :
                            idle_counter < BUS_IDLE_CLKS ? idle_counter + 1 :
-                                                       idle_counter;
+                                                          idle_counter;
 
 always_ff @(posedge clk48) begin
     if (reset == 1)
