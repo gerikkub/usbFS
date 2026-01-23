@@ -1,14 +1,15 @@
 
+`include "types.sv"
 
 module setup_buffer(
     input reset, clk,
     input en,
     input [7:0]byte_in,
     input byte_valid,
-    output bmRequestTypeDPTD,
-    output [1:0]bmRequestTypeType,
-    output [4:0]bmRequestTypeRecipient,
-    output [7:0]bRequest,
+    output SetupRequestTypeDTD bmRequestTypeDPTD,
+    output SetupRequestTypeType bmRequestTypeType,
+    output SetupRequestTypeRecipient bmRequestTypeRecipient,
+    output SetupRequest bRequest,
     output [15:0]wValue,
     output [15:0]wIndex,
     output [15:0]wLength
@@ -19,11 +20,11 @@ reg [7:0]buffer[8];
 reg [2:0]index;
 reg full;
 
-assign bmRequestTypeDPTD = buffer[0][7];
-assign bmRequestTypeType = buffer[0][6:5];
-assign bmRequestTypeRecipient = buffer[0][4:0];
+assign bmRequestTypeDPTD = SetupRequestTypeDTD'(buffer[0][7]);
+assign bmRequestTypeType = SetupRequestTypeType'(buffer[0][6:5]);
+assign bmRequestTypeRecipient = SetupRequestTypeRecipient'(buffer[0][4:0]);
 
-assign bRequest = buffer[1];
+assign bRequest = SetupRequest'(buffer[1]);
 
 assign wValue = {buffer[3] << 8, buffer[2]};
 assign wIndex = {buffer[5] << 8, buffer[4]};

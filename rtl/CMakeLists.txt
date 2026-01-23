@@ -67,7 +67,7 @@ macro(add_verilator_library)
         ${TOP_OBJ_DIR}/libverilated.a
         ${VERILATOR_LIBRARIES}
     )
-    target_include_directories(v${arg_TOP}_verilator_lib INTERFACE
+    target_include_directories(v${arg_TOP}_verilator_lib SYSTEM INTERFACE
         ${TOP_OBJ_DIR}
         ${VERILATOR_INCLUDE_DIRS}
     )
@@ -120,13 +120,22 @@ add_verilator_library(
 )
 
 add_verilator_library(
+    TOP packet_encoder
+    TOP_DIR src
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/packet_encoder.sv"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/jk_decoder.sv"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/crc.v"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/types.sv"
+)
+
+add_verilator_library(
     TOP transaction_sm
     TOP_DIR src
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/transaction_sm.sv"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/packet_decoder.sv"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/jk_decoder.sv"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/ep0_handler.sv"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_buffer.v"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_buffer.sv"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/crc.v"
 )
 

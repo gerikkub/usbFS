@@ -1,4 +1,6 @@
 
+#include <random>
+
 #include "mod_test.hpp"
 #include "usb_utils.hpp"
 #include "Vpacket_decoder.h"
@@ -143,7 +145,7 @@ TEST_F(PacketDecoderTest, InPacket) {
     reset();
 
     UsbUtils::JKEncoder encoder =
-        create_token_packet(UsbUtils::PID_IN, 0x32, 0x4);
+        UsbUtils::JKEncoder::create_token_packet(UsbUtils::PID_IN, 0x32, 0x4);
 
     step_packet(*this, encoder, nullptr);
 
@@ -159,7 +161,7 @@ TEST_F(PacketDecoderTest, OutPacket) {
     reset();
 
     UsbUtils::JKEncoder encoder =
-        create_token_packet(UsbUtils::PID_OUT, 0x5C, 0x1);
+        UsbUtils::JKEncoder::create_token_packet(UsbUtils::PID_OUT, 0x5C, 0x1);
 
     step_packet(*this, encoder, nullptr);
 
@@ -175,7 +177,7 @@ TEST_F(PacketDecoderTest, SetupPacket) {
     reset();
 
     UsbUtils::JKEncoder encoder =
-        create_token_packet(UsbUtils::PID_SETUP, 0, 0);
+        UsbUtils::JKEncoder::create_token_packet(UsbUtils::PID_SETUP, 0, 0);
 
     step_packet(*this, encoder, nullptr);
 
@@ -191,7 +193,7 @@ TEST_F(PacketDecoderTest, SofPacket) {
     reset();
 
     UsbUtils::JKEncoder encoder =
-        UsbUtils::create_sof_packet(0x321);
+        UsbUtils::JKEncoder::create_sof_packet(0x321);
 
     step_packet(*this, encoder, nullptr);
 
@@ -207,7 +209,7 @@ TEST_F(PacketDecoderTest, AckPacket) {
     reset();
 
     UsbUtils::JKEncoder encoder =
-        create_handshake_packet(UsbUtils::PID_ACK);
+        UsbUtils::JKEncoder::create_handshake_packet(UsbUtils::PID_ACK);
 
     step_packet(*this, encoder, nullptr);
 
@@ -221,7 +223,7 @@ TEST_F(PacketDecoderTest, NakPacket) {
     reset();
 
     UsbUtils::JKEncoder encoder =
-        create_handshake_packet(UsbUtils::PID_NAK);
+        UsbUtils::JKEncoder::create_handshake_packet(UsbUtils::PID_NAK);
 
     step_packet(*this, encoder, nullptr);
 
@@ -236,7 +238,7 @@ TEST_F(PacketDecoderTest, Data0Packet) {
 
     std::vector<uint8_t> exp_data = {0x55,0xAB, 0xF7, 0x02};
     UsbUtils::JKEncoder encoder =
-        create_data_packet(UsbUtils::PID_DATA0,
+        UsbUtils::JKEncoder::create_data_packet(UsbUtils::PID_DATA0,
                            exp_data);
 
     std::vector<uint8_t> act_data;
@@ -260,7 +262,7 @@ TEST_F(PacketDecoderTest, Data1Packet) {
 
     std::vector<uint8_t> exp_data = {0xFF, 0xFF, 0xFF, 0xFF, 0x75, 0x77, 0x22, 0xFF};
     UsbUtils::JKEncoder encoder =
-        create_data_packet(UsbUtils::PID_DATA1,
+        UsbUtils::JKEncoder::create_data_packet(UsbUtils::PID_DATA1,
                            exp_data);
 
     std::vector<uint8_t> act_data;
@@ -279,4 +281,63 @@ TEST_F(PacketDecoderTest, Data1Packet) {
     ASSERT_EQ(act_data, exp_data);
 }
 
+TEST_F(PacketDecoderTest, DataZero) {
+    reset();
+
+    std::vector<uint8_t> exp_data;
+    UsbUtils::JKEncoder encoder =
+        UsbUtils::JKEncoder::create_data_packet(UsbUtils::PID_DATA0,
+                           exp_data);
+
+    std::vector<uint8_t> act_data;
+    step_packet(*this, encoder, &act_data);
+    
+
+    ASSERT_EQ(mod->packet_eop, 1);
+    ASSERT_EQ(mod->packet_good, 1);
+    ASSERT_EQ(mod->packet_pid_valid, 1);
+    ASSERT_EQ(mod->packet_pid_out, UsbUtils::PID_DATA0);
+
+    ASSERT_EQ(act_data.size(), 2);
+}
+
+TEST_F(PacketDecoderTest, DataRandomPacket) {
+    reset();
+
+    std::random_device dev;
+    std::mt19937 rng(dev());
+    rng.seed(42);
+    std::uniform_int_distribution<std::mt19937::result_type> dist_byte(0,255);
+    std::uniform_int_distribution<std::mt19937::result_type> dist_pid(0,1);
+    std::uniform_int_distribution<std::mt19937::result_type> dist_len(0,1023);
+
+    for (int i = 0; i < 100; i++) {
+        int len = dist_len(rng);
+        std::vector<uint8_t> data(len);
+        for (int j = 0; j < len; j++) {
+            data.push_back(dist_byte(rng));
+        }
+
+        UsbUtils::Pid pid = dist_pid(rng) == 0 ? UsbUtils::PID_DATA0 : UsbUtils::PID_DATA1;
+
+        UsbUtils::JKEncoder encoder = 
+            UsbUtils::JKEncoder::create_data_packet(pid, data);
+
+        std::vector<uint8_t> act_data;
+        step_packet(*this, encoder, &act_data);
+
+        ASSERT_EQ(mod->packet_eop, 1);
+        ASSERT_EQ(mod->packet_good, 1);
+        ASSERT_EQ(mod->packet_pid_valid, 1);
+        ASSERT_EQ(mod->packet_pid_out, pid);
+
+        ASSERT_GT(act_data.size(), 2);
+        // Pop CRC bytes off
+        act_data.pop_back();
+        act_data.pop_back();
+        ASSERT_EQ(act_data, data);
+
+        clk();
+    }
+}
 

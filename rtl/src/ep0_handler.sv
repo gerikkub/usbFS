@@ -25,11 +25,11 @@ typedef enum {
     CTRL_SETUP_DATA,
     CTRL_SETUP_HANDSHAKE,
 
-    CTRL_WRITE_DATA,
-    CTRL_WRITE_STATUS,
+    CTRL_IN_DATA,
+    CTRL_IN_STATUS,
 
-    CTRL_READ_DATA,
-    CTRL_READ_STATUS,
+    CTRL_OUT_DATA,
+    CTRL_OUT_STATUS,
 
     CTRL_NODATA_STATUS
 } CtrlState;
@@ -39,10 +39,10 @@ CtrlState ctrl_state;
 logic sb_reset;
 logic sb_write_en;
 
-logic sb_bmRequestTypeDPTD;
-logic [1:0]sb_bmRequestTypeType;
-logic [4:0]sb_bmRequestTypeRecipient;
-logic [7:0]sb_bRequest;
+SetupRequestTypeDTD sb_bmRequestTypeDPTD;
+SetupRequestTypeType sb_bmRequestTypeType;
+SetupRequestTypeRecipient sb_bmRequestTypeRecipient;
+SetupRequest sb_bRequest;
 logic [15:0]sb_wValue;
 logic [15:0]sb_wIndex;
 logic [15:0]sb_wLength;
@@ -84,15 +84,21 @@ always_ff @(posedge clk48) begin
                     ctrl_state <= CTRL_IDLE;
             CTRL_SETUP_HANDSHAKE:
                 if (!txn_active)
-                    // TODO: Got to write or read states
-                    ctrl_state <= CTRL_IDLE;
+                    // TODO: Go to write or read states
+                    if (sb_wLength == 0)
+                        ctrl_state <= CTRL_NODATA_STATUS;
+                    else
+                        if (sb_bmRequestTypeDPTD == REQ_TYPE_DIR_HTD)
+                            ctrl_state <= CTRL_OUT_DATA;
+                        else
+                            ctrl_state <= CTRL_IN_DATA;
             default:
                 ctrl_state <= CTRL_IDLE;
             /*
-            CTRL_WRITE_DATA:
-            CTRL_WRITE_STATUS:
-            CTRL_READ_DATA:
-            CTRL_READ_STATUS:
+            CTRL_IN_DATA:
+            CTRL_IN_STATUS:
+            CTRL_OUT_DATA:
+            CTRL_OUT_STATUS:
             CTRL_NODATA_STATUS:
             */
         endcase

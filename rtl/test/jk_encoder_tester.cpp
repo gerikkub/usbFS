@@ -12,6 +12,11 @@ TEST_F(JKEncoderTest, Reset) {
     ASSERT_EQ(mod->bit_ack, 0);
     ASSERT_EQ(mod->dp, 1);
     ASSERT_EQ(mod->dn, 0);
+
+    clk();
+
+    ASSERT_EQ(mod->dp, 0);
+    ASSERT_EQ(mod->dn, 1);
 }
 
 
@@ -19,15 +24,13 @@ void loopback_test(JKEncoderTest& tester, std::vector<uint8_t> byte_vals, int ma
 
     UsbUtils::JKDecoder decoder;
 
-    tester.mod->start_txn = 1;
     tester.clk();
-    tester.mod->start_txn = 0;
     decoder.step(tester.mod->dp, tester.mod->dn);
     ASSERT_FALSE(decoder.get_err().has_value()) << decoder.get_err().value();
     ASSERT_FALSE(decoder.is_complete());
 
-    int byte_idx = 0;
-    int bit_idx = 0;
+    uint32_t byte_idx = 0;
+    uint32_t bit_idx = 0;
 
     while (byte_idx < byte_vals.size()) {
         while (bit_idx < 8) {
@@ -95,7 +98,8 @@ TEST_F(JKEncoderTest, TwoXfers) {
 
     std::vector<uint8_t> test_sop = {0x80, 0xa5, 0xb9, 0x40};
     loopback_test(*this, test_sop, 1000);
-    clk();
+    reset();
+
     std::vector<uint8_t> test_sop2 = {0x80, 0xa5, 0xba, 0x40};
     loopback_test(*this, test_sop2, 1000);
 }
@@ -117,7 +121,8 @@ TEST_F(JKEncoderTest, Random) {
     }
 
     loopback_test(*this, test_a, 35000);
-    clk();
+    reset();
+
     loopback_test(*this, test_b, 35000);
 }
 

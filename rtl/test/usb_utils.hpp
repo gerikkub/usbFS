@@ -40,6 +40,48 @@ enum Pid {
     PID_INVALID = 0x0
 };
 
+// Taken from https://electronics.stackexchange.com/questions/718294/how-is-crc5-calculated-in-detail-for-a-usb-token
+static unsigned char crc5usb(unsigned short input)
+{
+        unsigned char res = 0x1f;
+        unsigned char b;
+        int i;
+
+        for (i = 0;  i < 11;  ++i) {
+                b = (input ^ res) & 1;
+                input >>= 1;
+                if (b) {
+                        res = (res >> 1) ^ 0x14;        /* 10100 */
+                } else {
+                        res = (res >> 1);
+                }
+        }
+        return res ^ 0x1f;
+}
+
+// Modified from https://www.reddit.com/r/embedded/comments/1acoobg/crc16_again_with_a_little_gift_for_you_all/
+static uint16_t crc16usb(const uint8_t* data, size_t length) {
+
+    uint16_t crc = 0xFFFF;
+
+    for (size_t i = 0; i < length; i++) {
+        uint8_t  d = data[i];
+		uint32_t x = ((crc ^ d) & 0xff) << 8;
+		uint32_t y = x;
+
+		x ^= x << 1;
+		x ^= x << 2;
+		x ^= x << 4;
+		
+		x  = (x & 0x8000) | (y >> 1);
+
+		crc = (crc >> 8) ^ (x >> 15) ^ (x >> 1) ^ x;
+    }
+
+    return crc ^ 0xFFFF;
+}
+
+
 class JKDecoder {
 
     public:
@@ -70,14 +112,6 @@ class JKDecoder {
                 int bit = get_bit(bus);
                 last_bus_ = bus;
                 sample_clock_++;
-
-                /*
-                std::println("Sample: {} {} {} {} ({} {} {})",
-                             dp, dn, std::to_underlying(bus), bit,
-                             std::to_underlying(state_),
-                             sample_clock_,
-                             bitstuff_counter_);
-                             */
 
                 if (state_ == SYNC) {
                     sync_counter_++;
@@ -212,7 +246,6 @@ class JKDecoder {
 class JKEncoder {
 
     public:
-
     JKEncoder() :
         state_(IDLE),
         to_write_(),
@@ -311,12 +344,86 @@ class JKEncoder {
         return ret_bus;
     }
 
+    private:
+    static uint8_t get_pid_byte(Pid pid) {
+        uint8_t pid_byte = std::to_underlying(pid);
+        return pid_byte | ((~(pid_byte << 4)) & 0xF0);
+    }
+
+    public:
+    static JKEncoder create_token_packet(Pid pid,
+                                         uint8_t addr,
+                                         uint8_t endp) {
+        assert(pid == PID_IN ||
+               pid == PID_OUT ||
+               pid == PID_SETUP);
+
+        uint8_t crc5 = crc5usb((endp << 7) | addr);
+
+        std::vector<uint8_t> data = {
+            get_pid_byte(pid),
+            (uint8_t)((addr & 0x7F) | ((endp & 1) << 7)),
+            (uint8_t)((((endp >> 1) & 0x7) | (crc5 << 3)))
+        };
+
+        return JKEncoder(data);
+    }
+
+    static JKEncoder create_sof_packet(uint16_t frame) {
+
+        uint8_t crc5 = crc5usb(frame);
+
+        std::vector<uint8_t> data = {
+            get_pid_byte(PID_SOF),
+            (uint8_t)(frame & 0xFF),
+            (uint8_t)(((frame >> 8) & 0x7) | (crc5 << 3))
+        };
+
+        return JKEncoder(data);
+    }
+
+    static JKEncoder create_handshake_packet(Pid pid) {
+
+        assert(pid == PID_ACK ||
+               pid == PID_NAK ||
+               pid == PID_STALL);
+
+        std::vector<uint8_t> data = {
+            get_pid_byte(pid)
+        };
+        return JKEncoder(data);
+    }
+
+    static JKEncoder create_data_packet(Pid pid,
+                                        std::vector<uint8_t> data_in) {
+
+        assert(pid == PID_DATA0 ||
+               pid == PID_DATA1);
+
+        std::vector<uint8_t> data = {
+            get_pid_byte(pid)
+        };
+        for (auto b : data_in) {
+            data.push_back(b);
+        }
+        uint16_t crc = crc16usb(data_in.data(), data_in.size());
+
+        data.push_back(crc & 0xFF);
+        data.push_back(crc >> 8);
+
+        return JKEncoder(data);
+    }
+
     std::optional<std::string> get_err() {
         return err_;
     }
 
     bool is_complete() {
         return state_ == COMPLETE;
+    }
+
+    std::deque<uint8_t> get_to_write() {
+        return to_write_;
     }
 
     private:
@@ -348,114 +455,243 @@ class JKEncoder {
     std::optional<std::string> err_;
 };
 
-static uint8_t get_pid_byte(Pid pid) {
-    uint8_t pid_byte = std::to_underlying(pid);
-    return pid_byte | ((~(pid_byte << 4)) & 0xF0);
-}
+struct UsbPacket {
 
-// Taken from https://electronics.stackexchange.com/questions/718294/how-is-crc5-calculated-in-detail-for-a-usb-token
-static unsigned char crc5usb(unsigned short input)
-{
-        unsigned char res = 0x1f;
-        unsigned char b;
-        int i;
+    private:
+    UsbPacket() :
+        pid(PID_INVALID),
+        frame(0),
+        payload()
+    {}
 
-        for (i = 0;  i < 11;  ++i) {
-                b = (input ^ res) & 1;
-                input >>= 1;
-                if (b) {
-                        res = (res >> 1) ^ 0x14;        /* 10100 */
-                } else {
-                        res = (res >> 1);
-                }
+    public:
+    static std::optional<UsbPacket> decode_packet(std::vector<uint8_t> payload) {
+
+        UsbPacket packet;
+
+        if (payload.size() < 1) {
+            return std::nullopt;
         }
-        return res ^ 0x1f;
-}
 
-// Modified from https://www.reddit.com/r/embedded/comments/1acoobg/crc16_again_with_a_little_gift_for_you_all/
-static uint16_t crc16usb(const uint8_t* data, size_t length) {
+        uint8_t pid_lo = payload[0] & 0xF;
+        uint8_t pid_hi = ((payload[0] >> 4) & 0xF) ^ 0xF;
+        
+        if (pid_lo != pid_hi) {
+            return std::nullopt;
+        }
 
-    uint16_t crc = 0xFFFF;
+        Pid pid = static_cast<Pid>(pid_lo);
+        packet.pid = pid;
 
-    for (size_t i = 0; i < length; i++) {
-        uint8_t  d = data[i];
-		uint32_t x = ((crc ^ d) & 0xff) << 8;
-		uint32_t y = x;
+        switch (pid) {
+        case PID_OUT:
+        case PID_IN:
+        case PID_SETUP:
+        {
+            if (payload.size() != 3) {
+                return std::nullopt;
+            }
+            packet.token.addr = payload[1] & 0x7F;
+            packet.token.endp = ((payload[1] & 0x80) >> 7) |
+                                ((payload[2] & 0x07) << 1);
+            uint8_t crc5_payload = (payload[2] & 0xF8) >> 3;
+            uint8_t crc5_calc = crc5usb((packet.token.endp << 7) | packet.token.addr);
+            if (crc5_calc != crc5_payload) {
+                return std::nullopt;
+            }
+        }
+        break;
+        case PID_SOF:
+        {
+            if (payload.size() != 3) {
+                return std::nullopt;
+            }
+            packet.frame = (payload[1] & 0x07) << 8 |
+                           (payload[2] & 0xFF);
+            uint8_t crc5_payload = (payload[2] & 0xF8) >> 3;
+            uint8_t crc5_calc = crc5usb(packet.frame);
+            if (crc5_calc != crc5_payload) {
+                return std::nullopt;
+            }
+        }
+        break;
+        case PID_DATA0:
+        case PID_DATA1:
+        {
+            if (payload.size() < 3) {
+                return std::nullopt;
+            }
 
-		x ^= x << 1;
-		x ^= x << 2;
-		x ^= x << 4;
-		
-		x  = (x & 0x8000) | (y >> 1);
+            uint32_t idx;
+            for (idx = 1; idx < (payload.size() - 2); idx++) {
+                packet.payload.push_back(payload[idx]);
+            }
 
-		crc = (crc >> 8) ^ (x >> 15) ^ (x >> 1) ^ x;
+            uint16_t crc16_payload = payload[idx+1] << 8 |
+                                     payload[idx];
+            uint16_t crc16_calc = crc16usb(packet.payload.data(), packet.payload.size());
+            if (crc16_calc != crc16_payload) {
+                return std::nullopt;
+            }
+        }
+        break;
+        case PID_ACK:
+        case PID_NAK:
+        case PID_STALL:
+        {
+            if (payload.size() != 1) {
+                return std::nullopt;
+            }
+        }
+        break;
+        default:
+        {
+            return std::nullopt;
+        }
+        break;
+        }
+
+        return packet;
     }
 
-    return crc ^ 0xFFFF;
-}
+    static UsbPacket create_token_packet(Pid pid,
+                                         uint8_t addr,
+                                         uint8_t endp) {
+        assert(pid == PID_IN ||
+               pid == PID_OUT ||
+               pid == PID_SETUP);
 
-static JKEncoder create_token_packet(Pid pid,
-                                     uint8_t addr,
-                                     uint8_t endp) {
-    assert(pid == PID_IN ||
-           pid == PID_OUT ||
-           pid == PID_SETUP);
+        UsbPacket packet;
 
-    uint8_t crc5 = crc5usb((endp << 7) | addr);
-
-    std::vector<uint8_t> data = {
-        get_pid_byte(pid),
-        (uint8_t)((addr & 0x7F) | ((endp & 1) << 7)),
-        (uint8_t)(((endp >> 1) & 0x7 | (crc5 << 3)))
-    };
-
-    return JKEncoder(data);
-}
-
-static JKEncoder create_sof_packet(uint16_t frame) {
-
-    uint8_t crc5 = crc5usb(frame);
-
-    std::vector<uint8_t> data = {
-        get_pid_byte(PID_SOF),
-        (uint8_t)(frame & 0xFF),
-        (uint8_t)(((frame >> 8) & 0x7) | (crc5 << 3))
-    };
-
-    return JKEncoder(data);
-}
-
-static JKEncoder create_handshake_packet(Pid pid) {
-
-    assert(pid == PID_ACK ||
-           pid == PID_NAK ||
-           pid == PID_STALL);
-
-    std::vector<uint8_t> data = {
-        get_pid_byte(pid)
-    };
-    return JKEncoder(data);
-}
-
-static JKEncoder create_data_packet(Pid pid,
-                                    std::vector<uint8_t> data_in) {
-
-    assert(pid == PID_DATA0 ||
-           pid == PID_DATA1);
-
-    std::vector<uint8_t> data = {
-        get_pid_byte(pid)
-    };
-    for (auto b : data_in) {
-        data.push_back(b);
+        packet.pid = pid;
+        packet.token.addr = addr;
+        packet.token.endp = endp;
+        return packet;
     }
-    uint16_t crc = crc16usb(data_in.data(), data_in.size());
 
-    data.push_back(crc & 0xFF);
-    data.push_back(crc >> 8);
+    static UsbPacket create_sof_packet(Pid pid,
+                                       uint16_t frame) {
+        assert(pid == PID_SOF);
 
-    return JKEncoder(data);
-}
+        UsbPacket packet;
+
+        packet.pid = pid;
+        packet.frame = frame;
+        return packet;
+    }
+
+    static UsbPacket create_data_packet(Pid pid,
+                                        std::vector<uint8_t> payload) {
+        assert(pid == PID_DATA0 ||
+               pid == PID_DATA1);
+
+        UsbPacket packet;
+
+        packet.pid = pid;
+        packet.payload = payload;
+        return packet;
+    }
+
+    static UsbPacket create_handshake_packet(Pid pid) {
+        assert(pid == PID_ACK ||
+               pid == PID_NAK ||
+               pid == PID_STALL);
+
+        UsbPacket packet;
+
+        packet.pid = pid;
+        return packet;
+    }
+
+    std::vector<uint8_t> get_packet_bytes() {
+        JKEncoder encoded;
+        switch (pid) {
+            case PID_OUT:
+            case PID_IN:
+            case PID_SETUP:
+                encoded = JKEncoder::create_token_packet(pid,
+                                                         token.addr,
+                                                         token.endp);
+                break;
+            case PID_SOF:
+                encoded = JKEncoder::create_sof_packet(frame);
+                break;
+            case PID_DATA0:
+            case PID_DATA1:
+            case PID_DATA2:
+            case PID_MDATA:
+                encoded = JKEncoder::create_data_packet(pid,
+                                                        payload);
+                break;
+            case PID_ACK:
+            case PID_NAK:
+            case PID_STALL:
+                encoded = JKEncoder::create_handshake_packet(pid);
+                break;
+            case PID_NYET:
+            case PID_ERR:
+            case PID_SPLIT:
+            case PID_PING:
+            default:
+                assert(false);
+                encoded = JKEncoder::create_handshake_packet(PID_INVALID);
+        }
+
+        auto to_write = encoded.get_to_write();
+        assert(to_write.size() > 0);
+        return std::vector<uint8_t>(to_write.begin() + 1, to_write.end());
+    }
+
+    bool operator==(const UsbPacket& rhs) const {
+
+        if (pid != rhs.pid) {
+            return false;
+        }
+        if (pid == PID_INVALID) {
+            return false;
+        }
+
+        switch(pid) {
+            case PID_OUT:
+            case PID_IN:
+            case PID_SETUP:
+                return token.addr == rhs.token.addr &&
+                       token.endp == rhs.token.endp;
+            case PID_SOF:
+                return frame == rhs.frame;
+            case PID_DATA0:
+            case PID_DATA1:
+            case PID_DATA2:
+            case PID_MDATA:
+                return payload == rhs.payload;
+            case PID_ACK:
+            case PID_NAK:
+            case PID_STALL:
+            case PID_NYET:
+                return true;
+            case PID_ERR:
+            case PID_SPLIT:
+            case PID_PING:
+                assert(false);
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    Pid pid;
+    union {
+        struct {
+            uint16_t addr:7;
+            uint8_t endp:4;
+        } token;
+        struct {
+            uint16_t frame:11;
+        };
+    };
+    std::vector<uint8_t> payload;
+};
+
 
 }
 

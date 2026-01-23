@@ -32,4 +32,40 @@ typedef enum logic[1:0] {
     HANDSHAKE_STALL
 } Handshake;
 
+typedef enum logic {
+    REQ_TYPE_DIR_HTD = 0,
+    REQ_TYPE_DIR_DTH = 1
+} SetupRequestTypeDTD;
+
+typedef enum logic[1:0] {
+    REQ_TYPE_TYPE_STANDARD = 0,
+    REQ_TYPE_TYPE_CLASS = 1,
+    REQ_TYPE_TYPE_VENDOR = 2,
+    REQ_TYPE_TYPE_RESERVED = 3
+} SetupRequestTypeType;
+
+typedef enum logic[4:0] {
+    REQ_TYPE_RECIPIENT_DEVICE = 0,
+    REQ_TYPE_RECIPIENT_INTERFACE = 1,
+    REQ_TYPE_RECIPIENT_ENDPOINT = 2,
+    REQ_TYPE_RECIPIENT_OTHER = 3,
+    REQ_TYPE_RECIPIENT_RESERVED = 4
+} SetupRequestTypeRecipient;
+
+typedef enum logic[7:0] {
+    REQ_GET_STATUS = 0,
+    REQ_CLEAR_FEATURE = 1,
+
+    REQ_SET_FEATURE = 3,
+
+    REQ_SET_ADDRESS = 5,
+    REQ_GET_DESCRIPTOR = 6,
+    REQ_SET_DESCRIPTOR = 7,
+    REQ_GET_CONFIGURATION = 8,
+    REQ_SET_CONFIGURATION = 9,
+    REQ_GET_INTERFACE = 10,
+    REQ_SET_INTERFACE = 11,
+    REQ_SYNCH_FRAME = 12
+} SetupRequest;
+
 `endif // USBFS_TYPES

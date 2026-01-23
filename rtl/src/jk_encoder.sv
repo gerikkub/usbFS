@@ -3,7 +3,6 @@
 
 module jk_encoder (
     input reset, clk48,
-    input start_txn,
     input bit_in,
     input last_bit,
     output bit_ack,
@@ -11,12 +10,11 @@ module jk_encoder (
     output done
 );
 
-typedef enum {IDLE, SYNC, PAYLOAD, EOP, COMPLETE} EncoderState;
+typedef enum logic[1:0] {SYNC, PAYLOAD, EOP, COMPLETE} EncoderState;
 
 EncoderState encoder_state;
-EncoderState encoder_state_next;
 
-typedef enum {WRITE_IDLE, WRITE_SE0, WRITE_J, WRITE_K} OutputState;
+typedef enum logic[1:0] {WRITE_IDLE, WRITE_SE0, WRITE_J, WRITE_K} OutputState;
 
 OutputState output_state;
 OutputState output_state_next;
@@ -47,7 +45,7 @@ always_ff @(posedge clk48) begin
         write_counter <= 'd0;
     else
         case (encoder_state)
-            IDLE, COMPLETE:
+            COMPLETE:
                 write_counter <= 0;
             SYNC, PAYLOAD, EOP:
                 if (write_counter == WRITE_COUNT)
@@ -74,7 +72,7 @@ always_ff @(posedge clk48) begin
         sync_counter <= 0;
     else
         case (encoder_state)
-            IDLE, PAYLOAD, EOP, COMPLETE:
+            PAYLOAD, EOP, COMPLETE:
                 sync_counter <= 0;
             SYNC:
                 if (write_counter == WRITE_COUNT)
@@ -92,7 +90,7 @@ always_ff @(posedge clk48) begin
         eop_counter <= 0;
     else
         case (encoder_state)
-            IDLE, SYNC, PAYLOAD, COMPLETE:
+            SYNC, PAYLOAD, COMPLETE:
                 eop_counter <= 0;
             EOP:
                 if (write_counter == WRITE_COUNT)
@@ -112,7 +110,7 @@ always_ff @(posedge clk48) begin
         stuffing_counter <= 0;
     else
         case (encoder_state)
-            IDLE, COMPLETE:
+            COMPLETE:
                 stuffing_counter <= 0;
             SYNC, PAYLOAD:
                 if (write_counter == 0)
@@ -122,6 +120,8 @@ always_ff @(posedge clk48) begin
                         stuffing_counter <= 0;
                 else
                     stuffing_counter <= stuffing_counter;
+            EOP:
+                stuffing_counter <= 0;
         endcase
 end
 
@@ -138,8 +138,6 @@ always_comb begin
         output_state_next = WRITE_IDLE;
     else
         case (encoder_state)
-            IDLE:
-                output_state_next = WRITE_IDLE;
             SYNC:
                 if (write_counter == 0)
                     case (sync_counter)
@@ -173,13 +171,6 @@ always_comb begin
         endcase
 end
 
-always_ff @(posedge clk48) begin
-    if (reset)
-        encoder_state <= IDLE;
-    else
-        encoder_state <= encoder_state_next;
-end
-
 logic last_payload;
 
 always_ff @(posedge clk48) begin
@@ -196,31 +187,30 @@ always_ff @(posedge clk48) begin
             last_payload <= 0;
 end
 
-always_comb begin
-    case (encoder_state)
-        IDLE:
-            encoder_state_next =
-                start_txn == 1 ? SYNC :
-                                 IDLE;
-        SYNC:
-            encoder_state_next =
-                sync_counter == SYNC_COUNT &&
-                write_counter == WRITE_COUNT ? PAYLOAD :
-                                               SYNC;
-        PAYLOAD:
-            encoder_state_next =
-                write_counter == WRITE_COUNT &&
-                should_bitstuff == 0 &&
-                last_payload == 1 ? EOP :
-                                    PAYLOAD;
+always_ff @(posedge clk48) begin
+    if (reset)
+        encoder_state <= SYNC;
+    else
+        case (encoder_state)
+            SYNC:
+                encoder_state <=
+                    sync_counter == SYNC_COUNT &&
+                    write_counter == WRITE_COUNT ? PAYLOAD :
+                                                   SYNC;
+            PAYLOAD:
+                encoder_state <=
+                    write_counter == WRITE_COUNT &&
+                    should_bitstuff == 0 &&
+                    last_payload == 1 ? EOP :
+                                        PAYLOAD;
 
-        EOP:
-            encoder_state_next =
-                eop_counter == EOP_COUNT ? COMPLETE :
-                                           EOP;
-        COMPLETE:
-            encoder_state_next = IDLE;
-    endcase
+            EOP:
+                encoder_state <=
+                    eop_counter == EOP_COUNT ? COMPLETE :
+                                               EOP;
+            COMPLETE:
+                encoder_state <= COMPLETE;
+        endcase
 end
 
 endmodule
